@@ -14,7 +14,7 @@ Data ESG/
 # Ignore Seller datasets
 Data Seller/
 
-# Ignore processed datasets
+#Ignore cleaned datasets
 Dataset/processed/cleaned_amazon_dataset.csv
 
 # Outputs
