@@ -15,7 +15,8 @@ Data ESG/
 Data Seller/
 
 #Ignore cleaned datasets
-Dataset/processed/cleaned_amazon_dataset.csv
+Dataset/raw
+Dataset/Amazon E-commerce Products & Reviews Dataset
 
 # Outputs
 outputs/
