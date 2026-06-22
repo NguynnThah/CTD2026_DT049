@@ -1,0 +1,16 @@
+* [33m76b527e[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m chore: update gitignore configuration
+* [33m9bf9e1e[m feat: add comprehensive ESG exploratory data analysis
+* [33mf4ecb3e[m feat: complete data cleaning and preprocessing
+* [33md9cd856[m feat: add Amazon products-reviews merge pipeline
+[31m|[m * [33m87f04c4[m[33m ([m[1;31morigin/main[m[33m)[m EDA 3
+[31m|[m[31m/[m  
+*   [33mb706847[m Pull
+[33m|[m[34m\[m  
+[33m|[m *   [33m6c9f16a[m[33m ([m[1;31morigin/feature/modeling[m[33m, [m[1;31morigin/feature/esg[m[33m)[m Merge branch 'main' of https://github.com/NguynnThah/CTD2026_DT049
+[33m|[m [35m|[m[36m\[m  
+[33m|[m * [36m|[m [33mdcc677f[m Update gitignore
+* [36m|[m [36m|[m [33mb53ba87[m Push EDA 2
+[36m|[m [36m|[m[36m/[m  
+[36m|[m[36m/[m[36m|[m   
+* [36m|[m [33m19e7fa9[m Push EDA
+[36m|[m[36m/[m  
