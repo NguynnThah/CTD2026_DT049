@@ -1,0 +1,11 @@
+﻿Feature,ESG Dimension,Data Type,Measurement,Knowledge Base
+environmental_keyword_count,E,Integer,Keyword Frequency,ESG Keyword Dictionary
+sustainable_material_count,E,Integer,Dictionary Frequency,Sustainable Material Dictionary
+eco_label_count,E,Integer,Dictionary Frequency,Eco Label Dictionary
+product_quality_complaint_count,S,Integer,Complaint Frequency,Fashion ESG Complaint Ontology
+product_damage_complaint_count,S,Integer,Complaint Frequency,Fashion ESG Complaint Ontology
+product_safety_complaint_count,S,Integer,Complaint Frequency,Fashion ESG Complaint Ontology
+customer_service_complaint_count,G,Integer,Complaint Frequency,Fashion ESG Complaint Ontology
+counterfeit_complaint_count,G,Integer,Complaint Frequency,Fashion ESG Complaint Ontology
+packaging_complaint_count,E,Integer,Complaint Frequency,Fashion ESG Complaint Ontology
+governance_keyword_count,G,Integer,Keyword + Complaint Frequency,ESG Keyword Dictionary + Fashion ESG Complaint Ontology

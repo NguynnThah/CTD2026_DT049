@@ -1,0 +1,8 @@
+﻿complaint_category,normalized_complaint,esg_dimension,frequency,source
+Product Quality,poor quality,S,25746,Amazon Fashion Reviews Dataset
+Product Sizing,wrong size,G,22047,Amazon Fashion Reviews Dataset
+Product Damage,product damage,S,6287,Amazon Fashion Reviews Dataset
+Counterfeit,counterfeit product,G,1367,Amazon Fashion Reviews Dataset
+Customer Service,poor customer service,G,1094,Amazon Fashion Reviews Dataset
+Product Safety,chemical smell,S,924,Amazon Fashion Reviews Dataset
+Packaging,packaging damage,E,11,Amazon Fashion Reviews Dataset
