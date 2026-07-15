@@ -1,0 +1,10 @@
+﻿feature,indicator,dimension,dimension_code
+sustainable_material_count,Sustainable Material Adoption,Environmental,E
+eco_label_count,Eco Label Adoption,Environmental,E
+environmental_keyword_count,Environmental Commitment,Environmental,E
+product_quality_complaint_count,Product Quality Responsibility,Social,S
+product_damage_complaint_count,Product Durability,Social,S
+product_safety_complaint_count,Product Safety Responsibility,Social,S
+customer_service_complaint_count,Customer Relationship Management,Governance,G
+counterfeit_complaint_count,Business Integrity,Governance,G
+governance_keyword_count,Transparency Responsibility,Governance,G

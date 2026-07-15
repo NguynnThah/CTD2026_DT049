@@ -1,0 +1,10 @@
+﻿feature,indicator,dimension,dimension_code,local_weight,dimension_weight,global_weight
+sustainable_material_count,Sustainable Material Adoption,Environmental,E,0.5396145502210747,0.4933859667367513,0.2662382465260422
+eco_label_count,Eco Label Adoption,Environmental,E,0.29696133121249724,0.4933859667367513,0.14651655348371057
+environmental_keyword_count,Environmental Commitment,Environmental,E,0.16342411856642794,0.4933859667367513,0.08063116672699852
+product_quality_complaint_count,Product Quality Responsibility,Social,S,0.4000000000000001,0.1958003506560664,0.07832014026242659
+product_damage_complaint_count,Product Durability,Social,S,0.19999999999999993,0.1958003506560664,0.039160070131213275
+product_safety_complaint_count,Product Safety Responsibility,Social,S,0.39999999999999997,0.1958003506560664,0.07832014026242658
+customer_service_complaint_count,Customer Relationship Management,Governance,G,0.25000000000000006,0.3108136826071823,0.0777034206517956
+counterfeit_complaint_count,Business Integrity,Governance,G,0.4999999999999999,0.3108136826071823,0.15540684130359114
+governance_keyword_count,Transparency Responsibility,Governance,G,0.25,0.3108136826071823,0.07770342065179558
