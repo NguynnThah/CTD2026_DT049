@@ -1,0 +1,2 @@
+model,best_alpha,best_CV_MSE
+Ridge Regression,0.001,6.295160901856977e-08
