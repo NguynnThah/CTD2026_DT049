@@ -1,10 +1,11 @@
 {
     "notebook": "Notebook 06 - Seller ESG Modeling",
     "target": "ESG_reference_score",
+    "target_type": "AHP-derived internal reference score",
     "features": [
+        "environmental_keyword_count",
         "sustainable_material_count",
         "eco_label_count",
-        "environmental_keyword_count",
         "product_quality_complaint_count",
         "product_damage_complaint_count",
         "product_safety_complaint_count",
@@ -12,17 +13,21 @@
         "counterfeit_complaint_count",
         "governance_keyword_count"
     ],
-    "best_model": "Linear Regression",
-    "random_state": 42,
-    "number_of_sellers": 261,
     "number_of_features": 9,
+    "number_of_sellers": 261,
+    "best_candidate_model": "Stacking Regressor",
+    "linear_role": "reconstruction baseline",
+    "best_voting_weights": [
+        9,
+        1
+    ],
+    "random_state": 42,
     "output_files": [
-        "ahp_indicator_mapping.csv",
-        "indicator_weight.csv",
         "seller_esg_reference_dataset.csv",
+        "ahp_fixed_weights.csv",
         "model_performance.csv",
         "feature_importance.csv",
-        "seller_esg_model.pkl",
-        "ahp_consistency_results.csv"
-    ]
+        "seller_esg_model.pkl"
+    ],
+    "within_dimension_aggregation": "equal arithmetic mean"
 }

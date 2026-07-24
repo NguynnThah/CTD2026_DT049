@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,39 +6,89 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 import streamlit as st
-import matplotlib.pyplot as plt
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import MinMaxScaler
 
 
+# ============================================================
+# 1. PAGE CONFIGURATION
+# ============================================================
+
 st.set_page_config(
-    page_title="Seller ESG Assessment Prototype",
+    page_title="Seller ESG Dashboard",
+    page_icon="🌿",
     layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+st.markdown(
+    """
+    <style>
+        .block-container {
+            max-width: 1220px;
+            padding-top: 1.6rem;
+            padding-bottom: 2rem;
+        }
+
+        [data-testid="stMetric"] {
+            background: rgba(248, 250, 252, 0.92);
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            padding: 14px 16px;
+        }
+
+        [data-testid="stSidebar"] {
+            border-right: 1px solid #e5e7eb;
+        }
+
+        .esg-note {
+            padding: 14px 16px;
+            border-radius: 12px;
+            background: #f6f8f7;
+            border: 1px solid #e2e8e4;
+            margin-bottom: 1rem;
+        }
+
+        .small-muted {
+            color: #667085;
+            font-size: 0.92rem;
+        }
+
+        h1, h2, h3 {
+            letter-spacing: -0.02em;
+        }
+
+        #MainMenu {
+            visibility: hidden;
+        }
+
+        footer {
+            visibility: hidden;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 
 # ============================================================
-# 1. PROJECT PATH CONFIGURATION
+# 2. PROJECT PATHS
 # ============================================================
 
 def find_project_root(start: Path) -> Path:
     """
-    Find the project root by looking for both:
-    - Dataset/
-    - notebooks/
-
-    This lets the app work whether it is placed in the project root
-    or inside another subfolder.
+    Locate the project root by finding Dataset/processed.
+    The app may be placed in the root or any subfolder.
     """
     candidates = [start] + list(start.parents)
 
     for candidate in candidates:
-        if (candidate / "Dataset").exists() and (candidate / "notebooks").exists():
+        if (candidate / "Dataset" / "processed").exists():
             return candidate
 
     raise FileNotFoundError(
-        "Could not locate the project root. "
-        "Place this file somewhere inside the CTD2026_DT049 project."
+        "Không tìm thấy thư mục Dataset/processed. "
+        "Hãy đặt streamlit_app.py bên trong project CTD2026_DT049."
     )
 
 
@@ -54,213 +103,143 @@ FEATURE_DATASET_PATH = (
 )
 
 ESG_MODELING_DIR = PROJECT_ROOT / "ESG_Modeling"
-
-MAPPING_PATH = ESG_MODELING_DIR / "ahp_indicator_mapping.csv"
-WEIGHT_PATH = ESG_MODELING_DIR / "indicator_weight.csv"
-REFERENCE_PATH = ESG_MODELING_DIR / "seller_esg_reference_dataset.csv"
 PERFORMANCE_PATH = ESG_MODELING_DIR / "model_performance.csv"
 IMPORTANCE_PATH = ESG_MODELING_DIR / "feature_importance.csv"
-MODEL_PATH = ESG_MODELING_DIR / "seller_esg_model.pkl"
+METADATA_PATH = ESG_MODELING_DIR / "model_metadata.json"
+
 
 # ============================================================
-# 2. EXPECTED ESG STRUCTURE
+# 3. ESG SCORING CONFIGURATION
 # ============================================================
 
-DEFAULT_MAPPING = pd.DataFrame(
+DIMENSION_WEIGHTS = {
+    "E": 0.655,
+    "S": 0.290,
+    "G": 0.055,
+}
+
+DIMENSION_NAMES = {
+    "E": "Môi trường",
+    "S": "Xã hội",
+    "G": "Quản trị",
+}
+
+DIMENSION_SHORT_NAMES = {
+    "E": "Environmental",
+    "S": "Social",
+    "G": "Governance",
+}
+
+INDICATOR_MAPPING = pd.DataFrame(
     [
         {
             "feature": "sustainable_material_count",
-            "indicator": "Sustainable Material Adoption",
-            "dimension": "Environmental",
+            "indicator": "Sử dụng vật liệu bền vững",
             "dimension_code": "E",
+            "direction": "positive",
         },
         {
             "feature": "eco_label_count",
-            "indicator": "Eco Label Adoption",
-            "dimension": "Environmental",
+            "indicator": "Áp dụng nhãn sinh thái",
             "dimension_code": "E",
+            "direction": "positive",
         },
         {
-            "feature": "environmental_commitment_score",
-            "indicator": "Environmental Commitment",
-            "dimension": "Environmental",
+            "feature": "environmental_keyword_count",
+            "indicator": "Cam kết môi trường",
             "dimension_code": "E",
+            "direction": "positive",
         },
         {
-            "feature": "product_quality_score",
-            "indicator": "Product Quality Responsibility",
-            "dimension": "Social",
+            "feature": "product_quality_complaint_count",
+            "indicator": "Trách nhiệm chất lượng sản phẩm",
             "dimension_code": "S",
+            "direction": "negative",
         },
         {
-            "feature": "product_durability_score",
-            "indicator": "Product Durability",
-            "dimension": "Social",
+            "feature": "product_damage_complaint_count",
+            "indicator": "Độ bền sản phẩm",
             "dimension_code": "S",
+            "direction": "negative",
         },
         {
-            "feature": "product_safety_score",
-            "indicator": "Product Safety Responsibility",
-            "dimension": "Social",
+            "feature": "product_safety_complaint_count",
+            "indicator": "An toàn sản phẩm",
             "dimension_code": "S",
+            "direction": "negative",
         },
         {
-            "feature": "customer_relationship_score",
-            "indicator": "Customer Relationship Management",
-            "dimension": "Governance",
+            "feature": "customer_service_complaint_count",
+            "indicator": "Quản trị quan hệ khách hàng",
             "dimension_code": "G",
+            "direction": "negative",
         },
         {
-            "feature": "business_integrity_score",
-            "indicator": "Business Integrity",
-            "dimension": "Governance",
+            "feature": "counterfeit_complaint_count",
+            "indicator": "Liêm chính trong kinh doanh",
             "dimension_code": "G",
+            "direction": "negative",
         },
         {
-            "feature": "transparency_score",
-            "indicator": "Transparency & Responsibility",
-            "dimension": "Governance",
+            "feature": "governance_keyword_count",
+            "indicator": "Minh bạch và trách nhiệm",
             "dimension_code": "G",
+            "direction": "positive",
         },
     ]
 )
 
+INDICATOR_MAPPING["dimension"] = (
+    INDICATOR_MAPPING["dimension_code"]
+    .map(DIMENSION_NAMES)
+)
+
+ESG_FEATURES = INDICATOR_MAPPING["feature"].tolist()
+
+NEGATIVE_FEATURES = (
+    INDICATOR_MAPPING.loc[
+        INDICATOR_MAPPING["direction"] == "negative",
+        "feature",
+    ]
+    .tolist()
+)
+
 SELLER_COLUMN_CANDIDATES = [
-    "seller",
     "seller_name",
+    "seller",
     "seller_id",
     "shop_name",
     "shop_id",
     "brand",
 ]
 
-DIMENSION_NAMES = {
-    "E": "Environmental",
-    "S": "Social",
-    "G": "Governance",
-}
-
 SCORE_LEVELS = [
-    (80, "Excellent"),
-    (65, "Good"),
-    (50, "Moderate"),
-    (35, "Weak"),
-    (0, "Very Weak"),
+    (80, "Xuất sắc"),
+    (65, "Tốt"),
+    (50, "Trung bình"),
+    (35, "Cần cải thiện"),
+    (0, "Yếu"),
 ]
 
 
 # ============================================================
-# 3. DATA VALIDATION AND LOADING
+# 4. DATA HELPERS
 # ============================================================
 
 def find_first_existing_column(
     columns: Iterable[str],
     candidates: Iterable[str],
 ) -> str | None:
-    normalized = {str(column).strip().lower(): column for column in columns}
+    normalized = {
+        str(column).strip().lower(): column
+        for column in columns
+    }
 
     for candidate in candidates:
         if candidate.lower() in normalized:
             return normalized[candidate.lower()]
 
     return None
-
-
-def score_level(score: float) -> str:
-    for threshold, label in SCORE_LEVELS:
-        if score >= threshold:
-            return label
-    return "Very Weak"
-
-
-@st.cache_data
-def load_mapping() -> pd.DataFrame:
-    if MAPPING_PATH.exists():
-        mapping = pd.read_csv(MAPPING_PATH)
-    else:
-        mapping = DEFAULT_MAPPING.copy()
-
-    required_columns = {
-        "feature",
-        "indicator",
-        "dimension",
-        "dimension_code",
-    }
-
-    missing_columns = required_columns - set(mapping.columns)
-    if missing_columns:
-        raise ValueError(
-            "ahp_indicator_mapping.csv is missing columns: "
-            + ", ".join(sorted(missing_columns))
-        )
-
-    return mapping
-
-
-@st.cache_data
-def load_weights() -> pd.DataFrame:
-    if not WEIGHT_PATH.exists():
-        raise FileNotFoundError(
-            "indicator_weight.csv was not found.\n\n"
-            f"Expected path: {WEIGHT_PATH}\n\n"
-            "Run Part 3 of Notebook 06 first so that the AHP weights "
-            "are exported to Dataset/ESG_Modeling/indicator_weight.csv."
-        )
-
-    weights = pd.read_csv(WEIGHT_PATH)
-
-    required = {
-        "feature",
-        "indicator",
-        "dimension",
-        "dimension_code",
-        "local_weight",
-        "dimension_weight",
-        "global_weight",
-    }
-
-    missing = required - set(weights.columns)
-    if missing:
-        raise ValueError(
-            "indicator_weight.csv is missing columns: "
-            + ", ".join(sorted(missing))
-        )
-
-    return weights
-
-
-@st.cache_data
-def load_feature_dataset() -> pd.DataFrame:
-    if not FEATURE_DATASET_PATH.exists():
-        raise FileNotFoundError(
-            "seller_esg_feature_dataset.csv was not found.\n\n"
-            f"Expected path: {FEATURE_DATASET_PATH}\n\n"
-            "Run Notebook 05 first or check the file path."
-        )
-
-    return pd.read_csv(FEATURE_DATASET_PATH)
-
-
-def validate_features(
-    seller_df: pd.DataFrame,
-    mapping: pd.DataFrame,
-) -> list[str]:
-    required_features = mapping["feature"].tolist()
-
-    missing_features = [
-        feature
-        for feature in required_features
-        if feature not in seller_df.columns
-    ]
-
-    if missing_features:
-        raise ValueError(
-            "The following ESG features are missing from "
-            "seller_esg_feature_dataset.csv:\n"
-            + "\n".join(f"- {feature}" for feature in missing_features)
-        )
-
-    return required_features
 
 
 def detect_seller_column(df: pd.DataFrame) -> str:
@@ -271,102 +250,140 @@ def detect_seller_column(df: pd.DataFrame) -> str:
 
     if seller_column is None:
         raise ValueError(
-            "No seller identifier column was found. "
-            "Expected one of: "
+            "Không tìm thấy cột định danh seller. "
+            "Cần một trong các cột: "
             + ", ".join(SELLER_COLUMN_CANDIDATES)
         )
 
     return seller_column
 
 
-def build_reference_dataset(
+def score_level(score: float) -> str:
+    for threshold, label in SCORE_LEVELS:
+        if score >= threshold:
+            return label
+
+    return "Yếu"
+
+
+def score_status(score: float) -> str:
+    if score >= 70:
+        return "Tốt"
+    if score >= 50:
+        return "Trung bình"
+    return "Cần cải thiện"
+
+
+@st.cache_data
+def load_feature_dataset() -> pd.DataFrame:
+    if not FEATURE_DATASET_PATH.exists():
+        raise FileNotFoundError(
+            "Không tìm thấy seller_esg_feature_dataset.csv.\n"
+            f"Đường dẫn mong đợi: {FEATURE_DATASET_PATH}"
+        )
+
+    return pd.read_csv(FEATURE_DATASET_PATH)
+
+
+@st.cache_data
+def load_optional_csv(path: Path) -> pd.DataFrame | None:
+    if not path.exists():
+        return None
+
+    return pd.read_csv(path)
+
+
+@st.cache_data
+def build_dashboard_data(
     raw_df: pd.DataFrame,
-    weights: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame, str]:
     """
-    Rebuild the same scoring flow used in Notebook 06:
+    Scoring logic synchronized with Notebook 06:
 
-    raw features
-        -> numeric conversion
-        -> median imputation
-        -> Min-Max normalization
-        -> dimension scores
-        -> overall ESG reference score
+    1. Median imputation
+    2. Min-Max normalization
+    3. Reverse negative indicators
+    4. Mean of 3 indicators within each dimension
+    5. ESG = 0.655*E + 0.290*S + 0.055*G
     """
     seller_column = detect_seller_column(raw_df)
-    esg_features = weights["feature"].tolist()
 
     missing_features = [
         feature
-        for feature in esg_features
+        for feature in ESG_FEATURES
         if feature not in raw_df.columns
     ]
 
     if missing_features:
         raise ValueError(
-            "The following weighted ESG features are missing:\n"
-            + "\n".join(f"- {feature}" for feature in missing_features)
+            "Dataset đang thiếu các feature sau:\n- "
+            + "\n- ".join(missing_features)
         )
 
-    working = raw_df[[seller_column] + esg_features].copy()
+    working = raw_df[
+        [seller_column] + ESG_FEATURES
+    ].copy()
 
-    for feature in esg_features:
+    for feature in ESG_FEATURES:
         working[feature] = pd.to_numeric(
             working[feature],
             errors="coerce",
         )
 
     imputer = SimpleImputer(strategy="median")
-    imputed_values = imputer.fit_transform(working[esg_features])
+    imputed_values = imputer.fit_transform(
+        working[ESG_FEATURES]
+    )
 
     scaler = MinMaxScaler()
-    normalized_values = scaler.fit_transform(imputed_values)
+    normalized_values = scaler.fit_transform(
+        imputed_values
+    )
 
     normalized_df = pd.DataFrame(
         normalized_values,
-        columns=esg_features,
+        columns=ESG_FEATURES,
         index=working.index,
     )
 
-    # Convert normalized values from 0-1 to 0-100 for presentation.
-    normalized_100_df = normalized_df * 100
-    normalized_100_df.insert(
+    for feature in NEGATIVE_FEATURES:
+        normalized_df[feature] = (
+            1.0 - normalized_df[feature]
+        )
+
+    reference_df = normalized_df.copy()
+    reference_df.insert(
         0,
         seller_column,
         working[seller_column].astype(str).values,
     )
 
-    reference_df = normalized_100_df.copy()
+    dimension_feature_map = {
+        dimension_code: (
+            INDICATOR_MAPPING.loc[
+                INDICATOR_MAPPING["dimension_code"]
+                == dimension_code,
+                "feature",
+            ]
+            .tolist()
+        )
+        for dimension_code in ["E", "S", "G"]
+    }
 
-    for dimension_code in ["E", "S", "G"]:
-        dimension_rows = weights[
-            weights["dimension_code"] == dimension_code
-        ].copy()
-
-        dimension_score = np.zeros(len(reference_df))
-
-        for _, row in dimension_rows.iterrows():
-            dimension_score += (
-                reference_df[row["feature"]].to_numpy()
-                * float(row["local_weight"])
-            )
-
-        reference_df[f"{dimension_code}_score"] = dimension_score
-
-    dimension_weight_map = (
-        weights[["dimension_code", "dimension_weight"]]
-        .drop_duplicates("dimension_code")
-        .set_index("dimension_code")["dimension_weight"]
-        .to_dict()
-    )
+    for dimension_code, features in dimension_feature_map.items():
+        reference_df[f"{dimension_code}_score"] = (
+            reference_df[features]
+            .mean(axis=1)
+            * 100
+        )
 
     reference_df["ESG_reference_score"] = (
         reference_df["E_score"]
-        * float(dimension_weight_map["E"])
+        * DIMENSION_WEIGHTS["E"]
         + reference_df["S_score"]
-        * float(dimension_weight_map["S"])
+        * DIMENSION_WEIGHTS["S"]
         + reference_df["G_score"]
-        * float(dimension_weight_map["G"])
+        * DIMENSION_WEIGHTS["G"]
     )
 
     reference_df["ESG_level"] = (
@@ -377,238 +394,109 @@ def build_reference_dataset(
     reference_df["ESG_rank"] = (
         reference_df["ESG_reference_score"]
         .rank(
-            ascending=False,
             method="dense",
+            ascending=False,
         )
         .astype(int)
     )
 
-    indicator_long_rows = []
+    indicator_rows = []
 
     for _, seller_row in reference_df.iterrows():
         seller_value = seller_row[seller_column]
 
-        for _, weight_row in weights.iterrows():
-            feature = weight_row["feature"]
-            normalized_score = float(seller_row[feature])
+        for _, mapping_row in INDICATOR_MAPPING.iterrows():
+            feature = mapping_row["feature"]
+            dimension_code = mapping_row["dimension_code"]
+            normalized_score = (
+                float(seller_row[feature]) * 100
+            )
 
-            indicator_long_rows.append(
+            local_weight = 1.0 / 3.0
+            dimension_weight = DIMENSION_WEIGHTS[
+                dimension_code
+            ]
+            global_weight = (
+                dimension_weight * local_weight
+            )
+
+            indicator_rows.append(
                 {
                     seller_column: seller_value,
                     "feature": feature,
-                    "indicator": weight_row["indicator"],
-                    "dimension": weight_row["dimension"],
-                    "dimension_code": weight_row["dimension_code"],
+                    "indicator": mapping_row["indicator"],
+                    "dimension_code": dimension_code,
+                    "dimension": mapping_row["dimension"],
                     "normalized_score": normalized_score,
-                    "local_weight": float(weight_row["local_weight"]),
-                    "dimension_weight": float(
-                        weight_row["dimension_weight"]
-                    ),
-                    "global_weight": float(weight_row["global_weight"]),
+                    "local_weight": local_weight,
+                    "dimension_weight": dimension_weight,
+                    "global_weight": global_weight,
                     "dimension_contribution": (
                         normalized_score
-                        * float(weight_row["local_weight"])
+                        * local_weight
                     ),
                     "esg_contribution": (
                         normalized_score
-                        * float(weight_row["global_weight"])
+                        * global_weight
                     ),
                 }
             )
 
-    indicator_long_df = pd.DataFrame(indicator_long_rows)
+    indicator_long_df = pd.DataFrame(
+        indicator_rows
+    )
 
-    return reference_df, indicator_long_df, seller_column
+    return (
+        reference_df,
+        indicator_long_df,
+        seller_column,
+    )
 
 
 @st.cache_data
-def load_all_data():
-    mapping = load_mapping()
-    weights = load_weights()
+def load_all_data() -> dict:
     raw_df = load_feature_dataset()
 
-    validate_features(raw_df, mapping)
-
-    if REFERENCE_PATH.exists():
-        reference_df = pd.read_csv(REFERENCE_PATH)
-        seller_column = detect_seller_column(reference_df)
-
-        required_scores = {
-            "E_score",
-            "S_score",
-            "G_score",
-            "ESG_reference_score",
-        }
-
-        if not required_scores.issubset(reference_df.columns):
-            reference_df, indicator_long_df, seller_column = (
-                build_reference_dataset(raw_df, weights)
-            )
-        else:
-            # Build long indicator table from the saved reference dataset.
-            _, indicator_long_df, _ = build_reference_dataset(
-                raw_df,
-                weights,
-            )
-    else:
-        reference_df, indicator_long_df, seller_column = (
-            build_reference_dataset(raw_df, weights)
-        )
+    (
+        reference_df,
+        indicator_long_df,
+        seller_column,
+    ) = build_dashboard_data(raw_df)
 
     return {
-        "mapping": mapping,
-        "weights": weights,
         "raw": raw_df,
         "reference": reference_df,
         "indicator_long": indicator_long_df,
         "seller_column": seller_column,
+        "performance": load_optional_csv(
+            PERFORMANCE_PATH
+        ),
+        "importance": load_optional_csv(
+            IMPORTANCE_PATH
+        ),
     }
 
 
 # ============================================================
-# 4. EXPLANATION LOGIC
+# 5. UI HELPERS
 # ============================================================
 
-def benchmark_label(
-    score: float,
-    benchmark: float,
-) -> str:
-    gap = score - benchmark
-
-    if gap >= 15:
-        return "cao hơn đáng kể so với mức trung bình"
-    if gap >= 5:
-        return "cao hơn mức trung bình"
-    if gap <= -15:
-        return "thấp hơn đáng kể so với mức trung bình"
-    if gap <= -5:
-        return "thấp hơn mức trung bình"
-    return "xấp xỉ mức trung bình"
-
-
-def build_indicator_reason(
-    selected_row: pd.Series,
-    all_indicator_rows: pd.DataFrame,
-) -> str:
-    same_indicator = all_indicator_rows[
-        all_indicator_rows["feature"] == selected_row["feature"]
-    ]
-
-    benchmark = same_indicator["normalized_score"].mean()
-    position = benchmark_label(
-        selected_row["normalized_score"],
-        benchmark,
+def page_header(
+    title: str,
+    description: str,
+) -> None:
+    st.title(title)
+    st.markdown(
+        f'<div class="small-muted">{description}</div>',
+        unsafe_allow_html=True,
     )
+    st.write("")
 
-    return (
-        f"{selected_row['indicator']} đạt "
-        f"{selected_row['normalized_score']:.1f}/100, "
-        f"{position}. "
-        f"Chỉ báo này có trọng số cục bộ "
-        f"{selected_row['local_weight']:.4f} trong chiều "
-        f"{selected_row['dimension']} và trọng số toàn cục "
-        f"{selected_row['global_weight']:.4f} trong tổng điểm ESG."
-    )
-
-
-def build_dimension_reason(
-    dimension_code: str,
-    dimension_score: float,
-    seller_rows: pd.DataFrame,
-    all_rows: pd.DataFrame,
-) -> str:
-    dimension_rows = seller_rows[
-        seller_rows["dimension_code"] == dimension_code
-    ].copy()
-
-    strongest = dimension_rows.sort_values(
-        "dimension_contribution",
-        ascending=False,
-    ).iloc[0]
-
-    weakest = dimension_rows.sort_values(
-        "normalized_score",
-        ascending=True,
-    ).iloc[0]
-
-    dimension_name = DIMENSION_NAMES[dimension_code]
-
-    return (
-        f"Điểm {dimension_name} đạt {dimension_score:.1f}/100. "
-        f"{strongest['indicator']} là yếu tố đóng góp lớn nhất do kết hợp "
-        f"giữa điểm chỉ báo và trọng số cục bộ. "
-        f"{weakest['indicator']} là chỉ báo có điểm thấp nhất và là khu vực "
-        f"cần ưu tiên cải thiện."
-    )
-
-
-# ============================================================
-# 5. CHARTS
-# ============================================================
-
-def draw_dimension_bar(
-    e_score: float,
-    s_score: float,
-    g_score: float,
-):
-    labels = ["Environmental", "Social", "Governance"]
-    values = [e_score, s_score, g_score]
-
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.bar(labels, values)
-    ax.set_ylim(0, 100)
-    ax.set_ylabel("Score")
-    ax.set_title("E, S and G Scores")
-
-    for index, value in enumerate(values):
-        ax.text(
-            index,
-            value + 2,
-            f"{value:.1f}",
-            ha="center",
-        )
-
-    plt.tight_layout()
-    return fig
-
-
-def draw_radar(
-    e_score: float,
-    s_score: float,
-    g_score: float,
-):
-    labels = ["Environmental", "Social", "Governance"]
-    values = [e_score, s_score, g_score]
-
-    angles = np.linspace(
-        0,
-        2 * np.pi,
-        len(labels),
-        endpoint=False,
-    ).tolist()
-
-    values = values + values[:1]
-    angles = angles + angles[:1]
-
-    fig = plt.figure(figsize=(5, 5))
-    ax = plt.subplot(111, polar=True)
-    ax.plot(angles, values, linewidth=2)
-    ax.fill(angles, values, alpha=0.15)
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(labels)
-    ax.set_ylim(0, 100)
-    ax.set_title("ESG Dimension Profile", pad=20)
-
-    return fig
-
-
-# ============================================================
-# 6. VIEW HELPERS
-# ============================================================
 
 def seller_selector(
     reference_df: pd.DataFrame,
     seller_column: str,
+    key: str,
 ) -> str:
     options = (
         reference_df[seller_column]
@@ -620,795 +508,770 @@ def seller_selector(
     )
 
     return st.selectbox(
-        "Select seller",
+        "Chọn nhà bán hàng",
         options,
+        key=key,
     )
 
 
-def get_selected_seller(
+def selected_seller_row(
     reference_df: pd.DataFrame,
     seller_column: str,
-    selected_seller: str,
+    seller: str,
 ) -> pd.Series:
-    return reference_df[
-        reference_df[seller_column].astype(str) == str(selected_seller)
+    return reference_df.loc[
+        reference_df[seller_column].astype(str)
+        == str(seller)
     ].iloc[0]
 
 
-# ============================================================
-# 7. STREAMLIT PAGES
-# ============================================================
+def format_score(value: float) -> str:
+    return f"{value:.1f}"
 
-def show_home(data):
-    reference_df = data["reference"]
 
-    st.title("Seller ESG Assessment Prototype")
-    st.write(
-        "Hệ thống sử dụng dữ liệu thực tế từ quy trình xử lý của dự án "
-        "để mô phỏng việc chấm điểm ESG cho nhà bán hàng thời trang "
-        "trên sàn thương mại điện tử."
+def show_dimension_progress(
+    label: str,
+    score: float,
+) -> None:
+    st.markdown(
+        f"**{label}** · {score:.1f}/100"
     )
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Number of sellers", len(reference_df))
-    col2.metric("ESG dimensions", 3)
-    col3.metric("Operational indicators", 9)
-
-    st.subheader("Data pipeline")
-    st.code(
-        "Dataset/processed/ESG_Features/seller_esg_feature_dataset.csv\n"
-        "        ↓\n"
-        "Dataset/ESG_Modeling/indicator_weight.csv\n"
-        "        ↓\n"
-        "E, S, G dimension scores\n"
-        "        ↓\n"
-        "ESG reference score"
-    )
-
-    st.subheader("Current input paths")
-    st.write(f"Feature dataset: `{FEATURE_DATASET_PATH}`")
-    st.write(f"Weight dataset: `{WEIGHT_PATH}`")
-    st.write(f"Reference dataset: `{REFERENCE_PATH}`")
-
-
-def show_seller_overview(data):
-    reference_df = data["reference"]
-    seller_column = data["seller_column"]
-
-    st.title("Seller Overview")
-
-    selected = seller_selector(
-        reference_df,
-        seller_column,
-    )
-
-    seller = get_selected_seller(
-        reference_df,
-        seller_column,
-        selected,
-    )
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric(
-        "ESG Score",
-        f"{seller['ESG_reference_score']:.1f}",
-    )
-    c2.metric(
-        "Environmental",
-        f"{seller['E_score']:.1f}",
-    )
-    c3.metric(
-        "Social",
-        f"{seller['S_score']:.1f}",
-    )
-    c4.metric(
-        "Governance",
-        f"{seller['G_score']:.1f}",
-    )
-
-    st.write(
-        f"Nhà bán hàng đạt điểm ESG tổng hợp "
-        f"{seller['ESG_reference_score']:.1f}/100, "
-        f"thuộc nhóm {score_level(seller['ESG_reference_score'])}."
-    )
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.pyplot(
-            draw_dimension_bar(
-                seller["E_score"],
-                seller["S_score"],
-                seller["G_score"],
-            )
+    st.progress(
+        min(
+            max(
+                float(score) / 100.0,
+                0.0,
+            ),
+            1.0,
         )
-
-    with col2:
-        st.pyplot(
-            draw_radar(
-                seller["E_score"],
-                seller["S_score"],
-                seller["G_score"],
-            )
-        )
-
-
-def show_seller_score(data):
-    reference_df = data["reference"]
-    indicator_long = data["indicator_long"]
-    weights = data["weights"]
-    seller_column = data["seller_column"]
-
-    st.title("Seller ESG Score")
-
-    selected = seller_selector(
-        reference_df,
-        seller_column,
     )
 
-    seller = get_selected_seller(
-        reference_df,
-        seller_column,
-        selected,
-    )
 
-    seller_rows = indicator_long[
-        indicator_long[seller_column].astype(str) == str(selected)
+def indicator_table_for_seller(
+    indicator_long: pd.DataFrame,
+    seller_column: str,
+    seller: str,
+) -> pd.DataFrame:
+    table = indicator_long.loc[
+        indicator_long[seller_column].astype(str)
+        == str(seller)
     ].copy()
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric(
-        "ESG Score",
-        f"{seller['ESG_reference_score']:.1f} / 100",
-    )
-    c2.metric(
-        "Rating",
-        score_level(seller["ESG_reference_score"]),
-    )
-    c3.metric(
-        "Rank",
-        int(seller["ESG_rank"]),
+    table["Đánh giá"] = (
+        table["normalized_score"]
+        .apply(score_status)
     )
 
-    dimension_weight_df = (
-        weights[
-            [
-                "dimension_code",
-                "dimension",
-                "dimension_weight",
-            ]
-        ]
-        .drop_duplicates("dimension_code")
-        .copy()
-    )
-
-    dimension_score_map = {
-        "E": seller["E_score"],
-        "S": seller["S_score"],
-        "G": seller["G_score"],
-    }
-
-    dimension_weight_df["score"] = (
-        dimension_weight_df["dimension_code"]
-        .map(dimension_score_map)
-    )
-
-    dimension_weight_df["weighted_contribution"] = (
-        dimension_weight_df["score"]
-        * dimension_weight_df["dimension_weight"]
-    )
-
-    st.subheader("Overall score calculation")
-    st.dataframe(
-        dimension_weight_df[
+    return (
+        table[
             [
                 "dimension",
-                "score",
-                "dimension_weight",
-                "weighted_contribution",
-            ]
-        ].round(4),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    st.latex(
-        r"ESG_i = W_E E_i + W_S S_i + W_G G_i"
-    )
-
-    for dimension_code in ["E", "S", "G"]:
-        st.divider()
-
-        dimension_name = DIMENSION_NAMES[dimension_code]
-        dimension_score = seller[f"{dimension_code}_score"]
-
-        dimension_rows = seller_rows[
-            seller_rows["dimension_code"] == dimension_code
-        ].copy()
-
-        st.subheader(f"{dimension_name} Score")
-        st.write(
-            f"{dimension_name} đạt {dimension_score:.1f}/100, "
-            f"mức đánh giá {score_level(dimension_score)}."
-        )
-
-        table = dimension_rows[
-            [
                 "indicator",
                 "normalized_score",
-                "local_weight",
-                "dimension_contribution",
+                "Đánh giá",
             ]
-        ].copy()
+        ]
+        .rename(
+            columns={
+                "dimension": "Chiều",
+                "indicator": "Chỉ báo",
+                "normalized_score": "Điểm",
+            }
+        )
+        .sort_values(
+            ["Chiều", "Điểm"],
+            ascending=[True, False],
+        )
+    )
 
-        table.columns = [
-            "Indicator",
-            "Score",
-            "Local weight",
-            "Contribution",
+
+def recommendations_for_seller(
+    indicator_long: pd.DataFrame,
+    seller_column: str,
+    seller: str,
+) -> pd.DataFrame:
+    rows = indicator_long.loc[
+        indicator_long[seller_column].astype(str)
+        == str(seller)
+    ].copy()
+
+    rows["score_gap"] = (
+        100 - rows["normalized_score"]
+    ).clip(lower=0)
+
+    rows["priority_score"] = (
+        rows["score_gap"]
+        * rows["global_weight"]
+    )
+
+    return (
+        rows.sort_values(
+            "priority_score",
+            ascending=False,
+        )
+        .head(3)
+        .reset_index(drop=True)
+    )
+
+
+# ============================================================
+# 6. PAGES
+# ============================================================
+
+def show_overview(data: dict) -> None:
+    reference_df = data["reference"]
+    seller_column = data["seller_column"]
+
+    page_header(
+        "Tổng quan ESG",
+        "Bức tranh tổng thể về điểm ESG của các nhà bán hàng trong bộ dữ liệu.",
+    )
+
+    average_score = (
+        reference_df["ESG_reference_score"]
+        .mean()
+    )
+
+    top_row = (
+        reference_df
+        .sort_values(
+            "ESG_reference_score",
+            ascending=False,
+        )
+        .iloc[0]
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric(
+        "Số nhà bán hàng",
+        f"{len(reference_df):,}",
+    )
+    col2.metric(
+        "Điểm ESG trung bình",
+        format_score(average_score),
+    )
+    col3.metric(
+        "Điểm cao nhất",
+        format_score(
+            top_row["ESG_reference_score"]
+        ),
+    )
+    col4.metric(
+        "Số chỉ báo",
+        "9",
+    )
+
+    left, right = st.columns([1.1, 1])
+
+    with left:
+        st.subheader("Phân bố mức đánh giá")
+
+        level_order = [
+            "Xuất sắc",
+            "Tốt",
+            "Trung bình",
+            "Cần cải thiện",
+            "Yếu",
         ]
 
+        level_counts = (
+            reference_df["ESG_level"]
+            .value_counts()
+            .reindex(
+                level_order,
+                fill_value=0,
+            )
+            .rename_axis("Mức đánh giá")
+            .to_frame("Số seller")
+        )
+
+        st.bar_chart(
+            level_counts,
+            height=320,
+        )
+
+    with right:
+        st.subheader("Top 10 nhà bán hàng")
+
+        ranking = (
+            reference_df[
+                [
+                    seller_column,
+                    "ESG_reference_score",
+                    "E_score",
+                    "S_score",
+                    "G_score",
+                    "ESG_rank",
+                ]
+            ]
+            .sort_values("ESG_rank")
+            .head(10)
+            .rename(
+                columns={
+                    seller_column: "Nhà bán hàng",
+                    "ESG_reference_score": "ESG",
+                    "E_score": "E",
+                    "S_score": "S",
+                    "G_score": "G",
+                    "ESG_rank": "Hạng",
+                }
+            )
+        )
+
         st.dataframe(
-            table.round(4),
+            ranking.round(1),
             use_container_width=True,
             hide_index=True,
         )
 
-        st.write(
-            build_dimension_reason(
-                dimension_code,
-                dimension_score,
-                seller_rows,
-                indicator_long,
-            )
-        )
+    st.markdown(
+        """
+        <div class="esg-note">
+            <strong>Công thức đang sử dụng:</strong>
+            điểm từng chiều là trung bình của 3 chỉ báo;
+            điểm ESG tổng hợp = 0,655 × E + 0,290 × S + 0,055 × G.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
-def show_indicator_analysis(data):
+def show_seller_profile(data: dict) -> None:
     reference_df = data["reference"]
     indicator_long = data["indicator_long"]
     seller_column = data["seller_column"]
 
-    st.title("Indicator Analysis")
+    page_header(
+        "Hồ sơ nhà bán hàng",
+        "Xem điểm ESG, chỉ báo thành phần và các ưu tiên cải thiện.",
+    )
 
     selected = seller_selector(
         reference_df,
         seller_column,
+        key="profile_seller",
     )
 
-    seller_rows = indicator_long[
-        indicator_long[seller_column].astype(str) == str(selected)
-    ].copy()
-
-    display_df = seller_rows[
-        [
-            "feature",
-            "indicator",
-            "dimension",
-            "normalized_score",
-            "local_weight",
-            "global_weight",
-            "dimension_contribution",
-            "esg_contribution",
-        ]
-    ].copy()
-
-    st.dataframe(
-        display_df.round(4),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    selected_indicator = st.selectbox(
-        "Select indicator",
-        seller_rows["indicator"].tolist(),
-    )
-
-    selected_row = seller_rows[
-        seller_rows["indicator"] == selected_indicator
-    ].iloc[0]
-
-    st.subheader(selected_indicator)
-    st.write(
-        build_indicator_reason(
-            selected_row,
-            indicator_long,
-        )
-    )
-
-    st.write(
-        f"Điểm đóng góp vào chiều "
-        f"{selected_row['dimension']}: "
-        f"{selected_row['dimension_contribution']:.2f}."
-    )
-
-    st.write(
-        f"Điểm đóng góp trực tiếp vào ESG tổng hợp: "
-        f"{selected_row['esg_contribution']:.2f}."
-    )
-
-
-def show_benchmark(data):
-    reference_df = data["reference"]
-    seller_column = data["seller_column"]
-
-    st.title("Benchmark")
-
-    selected = seller_selector(
-        reference_df,
-        seller_column,
-    )
-
-    seller = get_selected_seller(
+    seller = selected_seller_row(
         reference_df,
         seller_column,
         selected,
     )
 
-    score_columns = [
-        "ESG_reference_score",
-        "E_score",
-        "S_score",
-        "G_score",
-    ]
+    c1, c2, c3, c4, c5 = st.columns(5)
 
-    average_scores = reference_df[score_columns].mean()
-
-    top_cutoff = reference_df[
-        "ESG_reference_score"
-    ].quantile(0.90)
-
-    top_group = reference_df[
-        reference_df["ESG_reference_score"] >= top_cutoff
-    ]
-
-    top_average = top_group[score_columns].mean()
-
-    benchmark_df = pd.DataFrame(
-        {
-            "Dimension": [
-                "ESG",
-                "Environmental",
-                "Social",
-                "Governance",
-            ],
-            "Selected seller": [
-                seller["ESG_reference_score"],
-                seller["E_score"],
-                seller["S_score"],
-                seller["G_score"],
-            ],
-            "Dataset average": [
-                average_scores["ESG_reference_score"],
-                average_scores["E_score"],
-                average_scores["S_score"],
-                average_scores["G_score"],
-            ],
-            "Top 10% average": [
-                top_average["ESG_reference_score"],
-                top_average["E_score"],
-                top_average["S_score"],
-                top_average["G_score"],
-            ],
-        }
-    )
-
-    st.dataframe(
-        benchmark_df.round(2),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-
-def show_recommendations(data):
-    reference_df = data["reference"]
-    indicator_long = data["indicator_long"]
-    seller_column = data["seller_column"]
-
-    st.title("Recommendations")
-
-    selected = seller_selector(
-        reference_df,
-        seller_column,
-    )
-
-    seller_rows = indicator_long[
-        indicator_long[seller_column].astype(str) == str(selected)
-    ].copy()
-
-    target_score = st.slider(
-        "Target indicator score",
-        60,
-        100,
-        85,
-    )
-
-    seller_rows["score_gap"] = np.maximum(
-        target_score - seller_rows["normalized_score"],
-        0,
-    )
-
-    seller_rows["priority_score"] = (
-        seller_rows["global_weight"]
-        * seller_rows["score_gap"]
-    )
-
-    recommendation_df = (
-        seller_rows.sort_values(
-            "priority_score",
-            ascending=False,
-        )
-        .reset_index(drop=True)
-    )
-
-    recommendation_df["Priority"] = (
-        recommendation_df.index + 1
-    )
-
-    st.dataframe(
-        recommendation_df[
-            [
-                "Priority",
-                "indicator",
-                "normalized_score",
-                "global_weight",
-                "score_gap",
-                "priority_score",
-            ]
-        ].round(4),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    top = recommendation_df.iloc[0]
-
-    st.write(
-        f"Chỉ báo nên ưu tiên cải thiện là "
-        f"{top['indicator']}. "
-        f"Điểm hiện tại là {top['normalized_score']:.1f}/100, "
-        f"khoảng cách tới mục tiêu là {top['score_gap']:.1f} điểm."
-    )
-
-
-def show_buyer_discovery(data):
-    reference_df = data["reference"]
-    seller_column = data["seller_column"]
-
-    st.title("Buyer Seller Discovery")
-
-    min_esg = st.slider(
-        "Minimum ESG score",
-        0,
-        100,
-        60,
-    )
-
-    min_e = st.slider(
-        "Minimum Environmental score",
-        0,
-        100,
-        0,
-    )
-
-    min_s = st.slider(
-        "Minimum Social score",
-        0,
-        100,
-        0,
-    )
-
-    min_g = st.slider(
-        "Minimum Governance score",
-        0,
-        100,
-        0,
-    )
-
-    filtered = reference_df[
-        (reference_df["ESG_reference_score"] >= min_esg)
-        & (reference_df["E_score"] >= min_e)
-        & (reference_df["S_score"] >= min_s)
-        & (reference_df["G_score"] >= min_g)
-    ].copy()
-
-    filtered["Rating"] = (
-        filtered["ESG_reference_score"]
-        .apply(score_level)
-    )
-
-    st.dataframe(
-        filtered[
-            [
-                seller_column,
-                "ESG_reference_score",
-                "E_score",
-                "S_score",
-                "G_score",
-                "Rating",
-            ]
-        ].sort_values(
-            "ESG_reference_score",
-            ascending=False,
-        ),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-
-def show_buyer_profile(data):
-    reference_df = data["reference"]
-    indicator_long = data["indicator_long"]
-    seller_column = data["seller_column"]
-
-    st.title("Buyer Seller Profile")
-
-    selected = seller_selector(
-        reference_df,
-        seller_column,
-    )
-
-    seller = get_selected_seller(
-        reference_df,
-        seller_column,
-        selected,
-    )
-
-    seller_rows = indicator_long[
-        indicator_long[seller_column].astype(str) == str(selected)
-    ].copy()
-
-    c1, c2, c3, c4 = st.columns(4)
     c1.metric(
         "ESG",
-        f"{seller['ESG_reference_score']:.1f}",
+        format_score(
+            seller["ESG_reference_score"]
+        ),
     )
     c2.metric(
-        "Environmental",
-        f"{seller['E_score']:.1f}",
+        "Môi trường",
+        format_score(
+            seller["E_score"]
+        ),
     )
     c3.metric(
-        "Social",
-        f"{seller['S_score']:.1f}",
+        "Xã hội",
+        format_score(
+            seller["S_score"]
+        ),
     )
     c4.metric(
-        "Governance",
-        f"{seller['G_score']:.1f}",
+        "Quản trị",
+        format_score(
+            seller["G_score"]
+        ),
+    )
+    c5.metric(
+        "Xếp hạng",
+        f"#{int(seller['ESG_rank'])}",
     )
 
-    for dimension_code in ["E", "S", "G"]:
-        st.subheader(
-            DIMENSION_NAMES[dimension_code]
+    st.markdown(
+        f"""
+        <div class="esg-note">
+            <strong>{selected}</strong> đạt
+            <strong>{seller['ESG_reference_score']:.1f}/100</strong>,
+            thuộc mức <strong>{seller['ESG_level']}</strong>.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    left, right = st.columns([1, 1.2])
+
+    with left:
+        st.subheader("Hồ sơ E · S · G")
+
+        show_dimension_progress(
+            "Môi trường",
+            seller["E_score"],
+        )
+        show_dimension_progress(
+            "Xã hội",
+            seller["S_score"],
+        )
+        show_dimension_progress(
+            "Quản trị",
+            seller["G_score"],
         )
 
-        st.write(
-            build_dimension_reason(
-                dimension_code,
-                seller[f"{dimension_code}_score"],
-                seller_rows,
-                indicator_long,
+        dimension_chart = pd.DataFrame(
+            {
+                "Điểm": [
+                    seller["E_score"],
+                    seller["S_score"],
+                    seller["G_score"],
+                ]
+            },
+            index=[
+                "Môi trường",
+                "Xã hội",
+                "Quản trị",
+            ],
+        )
+
+        st.bar_chart(
+            dimension_chart,
+            height=280,
+        )
+
+    with right:
+        st.subheader("Chi tiết chỉ báo")
+
+        indicator_table = indicator_table_for_seller(
+            indicator_long,
+            seller_column,
+            selected,
+        )
+
+        st.dataframe(
+            indicator_table.round(
+                {"Điểm": 1}
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    st.subheader("Ưu tiên cải thiện")
+
+    recommendations = recommendations_for_seller(
+        indicator_long,
+        seller_column,
+        selected,
+    )
+
+    recommendation_columns = st.columns(3)
+
+    for index, (_, row) in enumerate(
+        recommendations.iterrows()
+    ):
+        with recommendation_columns[index]:
+            st.markdown(
+                f"""
+                <div class="esg-note">
+                    <strong>{index + 1}. {row['indicator']}</strong><br>
+                    Điểm hiện tại: {row['normalized_score']:.1f}/100<br>
+                    Chiều: {row['dimension']}
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-        )
-
-    st.caption(
-        "Điểm ESG hiển thị là điểm đánh giá nhà bán hàng "
-        "trong mô hình nghiên cứu, không phải chứng nhận "
-        "ESG chính thức cho từng sản phẩm."
-    )
 
 
-def show_buyer_comparison(data):
+def show_comparison(data: dict) -> None:
     reference_df = data["reference"]
     seller_column = data["seller_column"]
 
-    st.title("Buyer Seller Comparison")
+    page_header(
+        "So sánh nhà bán hàng",
+        "So sánh từ 2 đến 4 nhà bán hàng theo ESG và ba chiều thành phần.",
+    )
 
-    seller_options = (
+    options = (
         reference_df[seller_column]
         .astype(str)
+        .dropna()
         .sort_values()
         .unique()
         .tolist()
     )
 
-    default_selection = seller_options[:3]
-
     selected = st.multiselect(
-        "Select 2 to 4 sellers",
-        seller_options,
-        default=default_selection,
+        "Chọn nhà bán hàng",
+        options,
+        default=options[:3],
         max_selections=4,
     )
 
     if len(selected) < 2:
         st.info(
-            "Please select at least two sellers."
+            "Hãy chọn ít nhất 2 nhà bán hàng."
         )
         return
 
-    selected_df = reference_df[
-        reference_df[seller_column].astype(str).isin(selected)
+    comparison_df = reference_df.loc[
+        reference_df[seller_column]
+        .astype(str)
+        .isin(selected),
+        [
+            seller_column,
+            "ESG_reference_score",
+            "E_score",
+            "S_score",
+            "G_score",
+            "ESG_rank",
+        ],
     ].copy()
 
-    comparison = (
-        selected_df.set_index(seller_column)[
-            [
-                "ESG_reference_score",
-                "E_score",
-                "S_score",
-                "G_score",
-            ]
-        ]
-        .T
+    comparison_df = comparison_df.rename(
+        columns={
+            seller_column: "Nhà bán hàng",
+            "ESG_reference_score": "ESG",
+            "E_score": "Môi trường",
+            "S_score": "Xã hội",
+            "G_score": "Quản trị",
+            "ESG_rank": "Hạng",
+        }
     )
 
-    comparison.index = [
-        "ESG",
-        "Environmental",
-        "Social",
-        "Governance",
-    ]
-
     st.dataframe(
-        comparison.round(2),
+        comparison_df.round(1),
         use_container_width=True,
+        hide_index=True,
+    )
+
+    chart_df = (
+        comparison_df
+        .set_index("Nhà bán hàng")[
+            [
+                "ESG",
+                "Môi trường",
+                "Xã hội",
+                "Quản trị",
+            ]
+        ]
+    )
+
+    st.bar_chart(
+        chart_df,
+        height=420,
     )
 
     priority = st.selectbox(
-        "Buyer priority",
+        "Tiêu chí ưu tiên",
         [
-            "Balanced ESG",
-            "Environmental priority",
-            "Product quality and safety priority",
-            "Transparency and integrity priority",
+            "ESG",
+            "Môi trường",
+            "Xã hội",
+            "Quản trị",
         ],
     )
 
-    priority_column_map = {
-        "Balanced ESG": "ESG_reference_score",
-        "Environmental priority": "E_score",
-        "Product quality and safety priority": "S_score",
-        "Transparency and integrity priority": "G_score",
-    }
+    best_row = (
+        comparison_df
+        .sort_values(
+            priority,
+            ascending=False,
+        )
+        .iloc[0]
+    )
 
-    score_column = priority_column_map[priority]
-
-    best_seller = selected_df.sort_values(
-        score_column,
-        ascending=False,
-    ).iloc[0]
-
-    st.write(
-        f"Với ưu tiên hiện tại, "
-        f"{best_seller[seller_column]} có điểm cao nhất "
-        f"trong nhóm được chọn."
+    st.success(
+        f"Theo tiêu chí {priority}, "
+        f"{best_row['Nhà bán hàng']} đang có điểm cao nhất "
+        f"({best_row[priority]:.1f}/100)."
     )
 
 
-def show_methodology(data):
-    weights = data["weights"]
+def show_model_results(data: dict) -> None:
+    performance_df = data["performance"]
+    importance_df = data["importance"]
 
-    st.title("Methodology")
+    page_header(
+        "Kết quả mô hình",
+        "Tóm tắt hiệu quả của 5 mô hình và mức độ ảnh hưởng của các feature.",
+    )
 
-    st.subheader("Research framework")
+    if performance_df is None:
+        st.info(
+            "Chưa có model_performance.csv. "
+            "Hãy chạy Notebook 06 trước."
+        )
+    else:
+        columns_to_show = [
+            column
+            for column in [
+                "model",
+                "test_RMSE",
+                "test_R2",
+                "CV_RMSE_mean",
+                "CV_R2_mean",
+            ]
+            if column in performance_df.columns
+        ]
+
+        display_performance = (
+            performance_df[columns_to_show]
+            .copy()
+        )
+
+        display_performance = (
+            display_performance.rename(
+                columns={
+                    "model": "Mô hình",
+                    "test_RMSE": "Test RMSE",
+                    "test_R2": "Test R²",
+                    "CV_RMSE_mean": "CV RMSE",
+                    "CV_R2_mean": "CV R²",
+                }
+            )
+        )
+
+        st.dataframe(
+            display_performance.round(6),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.markdown(
+            """
+            <div class="esg-note">
+                <strong>Cách đọc kết quả:</strong>
+                Linear Regression là mô hình baseline tái tạo công thức điểm.
+                Ridge Regression phù hợp để làm mô hình chính vì đơn giản,
+                ổn định và dễ giải thích.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.subheader("Mức độ ảnh hưởng của feature")
+
+    if importance_df is None:
+        st.info(
+            "Chưa có feature_importance.csv. "
+            "Hãy chạy Notebook 06 trước."
+        )
+        return
+
+    if (
+        "indicator" in importance_df.columns
+        and "importance_normalized"
+        in importance_df.columns
+    ):
+        importance_chart = (
+            importance_df[
+                [
+                    "indicator",
+                    "importance_normalized",
+                ]
+            ]
+            .dropna()
+            .sort_values(
+                "importance_normalized",
+                ascending=True,
+            )
+            .set_index("indicator")
+            * 100
+        )
+
+        importance_chart.columns = [
+            "Mức ảnh hưởng (%)"
+        ]
+
+        st.bar_chart(
+            importance_chart,
+            height=420,
+        )
+
+        st.dataframe(
+            importance_df[
+                [
+                    column
+                    for column in [
+                        "importance_rank",
+                        "indicator",
+                        "dimension",
+                        "importance_normalized",
+                    ]
+                    if column
+                    in importance_df.columns
+                ]
+            ]
+            .rename(
+                columns={
+                    "importance_rank": "Hạng",
+                    "indicator": "Chỉ báo",
+                    "dimension": "Chiều",
+                    "importance_normalized": "Mức ảnh hưởng",
+                }
+            )
+            .round(4),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.dataframe(
+            importance_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
+def show_methodology(data: dict) -> None:
+    page_header(
+        "Phương pháp",
+        "Logic chấm điểm đang được Streamlit sử dụng.",
+    )
+
+    st.subheader("Quy trình")
+
     st.code(
-        "Seller ESG feature dataset\n"
-        "        ↓\n"
-        "Feature validation\n"
+        "Seller-level ESG dataset\n"
         "        ↓\n"
         "Median imputation\n"
         "        ↓\n"
         "Min-Max normalization\n"
         "        ↓\n"
-        "AHP local and global weights\n"
+        "Reverse negative complaint indicators\n"
         "        ↓\n"
-        "E, S, G scores\n"
+        "Mean of 3 indicators within E, S and G\n"
         "        ↓\n"
-        "ESG reference score"
+        "ESG = 0.655 × E + 0.290 × S + 0.055 × G"
     )
 
-    st.subheader("Dimension score")
-    st.latex(
-        r"D_i = \sum_{j=1}^{m} w_{j|D}x_{ij}"
+    st.subheader("Trọng số ba chiều")
+
+    dimension_table = pd.DataFrame(
+        {
+            "Chiều": [
+                "Môi trường",
+                "Xã hội",
+                "Quản trị",
+            ],
+            "Mã": [
+                "E",
+                "S",
+                "G",
+            ],
+            "Trọng số": [
+                DIMENSION_WEIGHTS["E"],
+                DIMENSION_WEIGHTS["S"],
+                DIMENSION_WEIGHTS["G"],
+            ],
+            "Trọng số tương đương mỗi feature": [
+                DIMENSION_WEIGHTS["E"] / 3,
+                DIMENSION_WEIGHTS["S"] / 3,
+                DIMENSION_WEIGHTS["G"] / 3,
+            ],
+        }
     )
 
-    st.subheader("Overall ESG score")
-    st.latex(
-        r"ESG_i = W_EE_i + W_SS_i + W_GG_i"
-    )
-
-    st.latex(
-        r"ESG_i = \sum_{j=1}^{9}GW_jx_{ij}"
-    )
-
-    st.subheader("AHP weights")
     st.dataframe(
-        weights,
+        dimension_table.round(6),
         use_container_width=True,
         hide_index=True,
     )
 
-    st.write(
-        "Prototype sử dụng trực tiếp các file đầu ra của "
-        "Notebook 05 và Notebook 06. "
-        "Kết quả phục vụ mục đích nghiên cứu và trình diễn, "
-        "không thay thế chứng nhận ESG hoặc kiểm toán độc lập."
+    st.latex(
+        r"""
+        E_i = \frac{E_{1i}+E_{2i}+E_{3i}}{3},
+        \quad
+        S_i = \frac{S_{1i}+S_{2i}+S_{3i}}{3},
+        \quad
+        G_i = \frac{G_{1i}+G_{2i}+G_{3i}}{3}
+        """
+    )
+
+    st.latex(
+        r"""
+        ESG_i = 0.655E_i + 0.290S_i + 0.055G_i
+        """
+    )
+
+    st.warning(
+        "ESG_reference_score là điểm tham chiếu nội sinh "
+        "được xây dựng từ chính các feature đầu vào. "
+        "Các mô hình Machine Learning được dùng để kiểm tra "
+        "khả năng tái tạo và tính ổn định của hệ thống điểm, "
+        "không phải để xác thực một nhãn ESG độc lập."
+    )
+
+    st.caption(
+        f"Nguồn dữ liệu đang dùng: {FEATURE_DATASET_PATH}"
     )
 
 
 # ============================================================
-# 8. APPLICATION ENTRY POINT
+# 7. APPLICATION ENTRY POINT
 # ============================================================
 
 def main() -> None:
-    """
-    Main entry point of the Streamlit application.
-    """
-
     try:
         data = load_all_data()
 
     except FileNotFoundError as error:
-        st.error("Không tìm thấy file dữ liệu đầu vào.")
+        st.error(
+            "Không tìm thấy dữ liệu đầu vào."
+        )
         st.code(str(error))
         st.stop()
-        return
 
     except ValueError as error:
-        st.error("Dữ liệu đầu vào chưa đúng cấu trúc yêu cầu.")
+        st.error(
+            "Dữ liệu đầu vào chưa đúng cấu trúc."
+        )
         st.code(str(error))
         st.stop()
-        return
 
     except Exception as error:
-        st.error("Không thể khởi tạo ứng dụng.")
+        st.error(
+            "Không thể khởi tạo ứng dụng."
+        )
         st.exception(error)
         st.stop()
-        return
 
-    page = st.sidebar.radio(
-        "Navigation",
-        [
-            "Home",
-            "Seller Overview",
-            "Seller ESG Score",
-            "Indicator Analysis",
-            "Benchmark",
-            "Recommendations",
-            "Buyer Discovery",
-            "Buyer Seller Profile",
-            "Buyer Comparison",
-            "Methodology",
-        ],
-    )
+    with st.sidebar:
+        st.markdown("## 🌿 Seller ESG")
+        st.caption(
+            "Dashboard đánh giá ESG cho nhà bán hàng thời trang"
+        )
 
-    if page == "Home":
-        show_home(data)
+        page = st.radio(
+            "Điều hướng",
+            [
+                "Tổng quan",
+                "Hồ sơ nhà bán hàng",
+                "So sánh",
+                "Kết quả mô hình",
+                "Phương pháp",
+            ],
+            label_visibility="collapsed",
+        )
 
-    elif page == "Seller Overview":
-        show_seller_overview(data)
+        st.divider()
 
-    elif page == "Seller ESG Score":
-        show_seller_score(data)
+        st.caption(
+            "Trọng số: E 65,5% · S 29,0% · G 5,5%"
+        )
 
-    elif page == "Indicator Analysis":
-        show_indicator_analysis(data)
+    if page == "Tổng quan":
+        show_overview(data)
 
-    elif page == "Benchmark":
-        show_benchmark(data)
+    elif page == "Hồ sơ nhà bán hàng":
+        show_seller_profile(data)
 
-    elif page == "Recommendations":
-        show_recommendations(data)
+    elif page == "So sánh":
+        show_comparison(data)
 
-    elif page == "Buyer Discovery":
-        show_buyer_discovery(data)
+    elif page == "Kết quả mô hình":
+        show_model_results(data)
 
-    elif page == "Buyer Seller Profile":
-        show_buyer_profile(data)
-
-    elif page == "Buyer Comparison":
-        show_buyer_comparison(data)
-
-    elif page == "Methodology":
+    elif page == "Phương pháp":
         show_methodology(data)
 
 
