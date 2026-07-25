@@ -10,8 +10,6 @@
 
 **Giải thưởng:** Giải thưởng Tinh hoa Học thuật CTD 2026
 
-**Giảng viên hướng dẫn:** ThS. Hồ Thị Thanh Tuyến
-
 ## Thành Viên Nhóm
 
 | STT | Họ và tên | MSSV |
